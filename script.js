@@ -96,6 +96,7 @@ class Game {
     this.highScoreEl = document.getElementById("highScore");
     this.levelEl = document.getElementById("level");
     this.messageEl = document.getElementById("message");
+    this.aiToggleBtn = document.getElementById("aiToggle");
 
     this.highScore = Number(localStorage.getItem("snakeHighScore")) || 0;
     this.highScoreEl.textContent = this.highScore;
@@ -114,13 +115,19 @@ class Game {
     this.running = false;
     this.paused = false;
     this.timer = null;
+    this.aiEnabled = false;
     this.updateHud();
+    this.updateAiButton();
   }
 
   bindInput() {
     document.addEventListener("keydown", (e) => {
       if (e.key === "p" || e.key === "P") {
         this.togglePause();
+        return;
+      }
+      if (e.key === "i" || e.key === "I") {
+        this.toggleAi();
         return;
       }
       if (!this.running && (e.key === " " || e.key === "Enter")) {
@@ -130,9 +137,29 @@ class Game {
       const dir = DIRECTIONS[e.key];
       if (dir) {
         if (!this.running) this.start();
+        if (this.aiEnabled) this.aiEnabled = false;
+        this.updateAiButton();
         this.snake.setDirection(dir);
       }
     });
+
+    if (this.aiToggleBtn) {
+      this.aiToggleBtn.addEventListener("click", () => this.toggleAi());
+    }
+  }
+
+  toggleAi() {
+    this.aiEnabled = !this.aiEnabled;
+    this.updateAiButton();
+    if (!this.running) this.start();
+  }
+
+  updateAiButton() {
+    if (!this.aiToggleBtn) return;
+    this.aiToggleBtn.textContent = this.aiEnabled
+      ? "AI Autopilot: ON"
+      : "AI Autopilot: OFF";
+    this.aiToggleBtn.classList.toggle("on", this.aiEnabled);
   }
 
   start() {
@@ -162,6 +189,10 @@ class Game {
 
   loop() {
     if (this.paused) return;
+
+    if (this.aiEnabled) {
+      this.snake.setDirection(this.computeAiDirection());
+    }
 
     this.snake.move();
 
@@ -209,6 +240,128 @@ class Game {
   updateHud() {
     this.scoreEl.textContent = this.score;
     this.levelEl.textContent = this.level;
+  }
+
+  // Picks the snake's next move: shortest path to the food (BFS) when one
+  // exists, otherwise the safest open direction (flood-fill) so it doesn't
+  // trap itself in a dead end.
+  computeAiDirection() {
+    const blocked = this.blockedCells();
+    const path = this.bfsPath(this.snake.head, this.food.position, blocked);
+    if (path && path.length > 0) return path[0];
+    return this.safestDirection(blocked);
+  }
+
+  // The tail cell is left out of the obstacle set because it moves away on
+  // this same tick (unless the snake is about to eat, which is a rare and
+  // harmless overestimate here).
+  blockedCells() {
+    const cells = this.snake.body.slice(0, -1);
+    return new Set(cells.map((c) => `${c.x},${c.y}`));
+  }
+
+  bfsPath(start, goal, blocked) {
+    const key = (c) => `${c.x},${c.y}`;
+    const dirs = [
+      { x: 0, y: -1 },
+      { x: 0, y: 1 },
+      { x: -1, y: 0 },
+      { x: 1, y: 0 },
+    ];
+
+    const visited = new Set([key(start)]);
+    const queue = [{ cell: start, path: [] }];
+
+    while (queue.length > 0) {
+      const { cell, path } = queue.shift();
+      if (cell.x === goal.x && cell.y === goal.y) return path;
+
+      for (const dir of dirs) {
+        const next = { x: cell.x + dir.x, y: cell.y + dir.y };
+        if (
+          next.x < 0 ||
+          next.y < 0 ||
+          next.x >= CELL_COUNT ||
+          next.y >= CELL_COUNT
+        )
+          continue;
+
+        const k = key(next);
+        if (visited.has(k) || blocked.has(k)) continue;
+
+        visited.add(k);
+        queue.push({ cell: next, path: [...path, dir] });
+      }
+    }
+
+    return null;
+  }
+
+  safestDirection(blocked) {
+    const current = this.snake.direction;
+    const dirs = [
+      { x: 0, y: -1 },
+      { x: 0, y: 1 },
+      { x: -1, y: 0 },
+      { x: 1, y: 0 },
+    ].filter((d) => !(d.x === -current.x && d.y === -current.y));
+
+    let best = current;
+    let bestSpace = -1;
+
+    for (const dir of dirs) {
+      const next = {
+        x: this.snake.head.x + dir.x,
+        y: this.snake.head.y + dir.y,
+      };
+      const outOfBounds =
+        next.x < 0 || next.y < 0 || next.x >= CELL_COUNT || next.y >= CELL_COUNT;
+      if (outOfBounds || blocked.has(`${next.x},${next.y}`)) continue;
+
+      const space = this.floodFillCount(next, blocked);
+      if (space > bestSpace) {
+        bestSpace = space;
+        best = dir;
+      }
+    }
+
+    return best;
+  }
+
+  floodFillCount(start, blocked) {
+    const key = (c) => `${c.x},${c.y}`;
+    const visited = new Set([key(start)]);
+    const stack = [start];
+    let count = 0;
+
+    while (stack.length > 0) {
+      const cell = stack.pop();
+      count += 1;
+
+      for (const dir of [
+        { x: 0, y: -1 },
+        { x: 0, y: 1 },
+        { x: -1, y: 0 },
+        { x: 1, y: 0 },
+      ]) {
+        const next = { x: cell.x + dir.x, y: cell.y + dir.y };
+        if (
+          next.x < 0 ||
+          next.y < 0 ||
+          next.x >= CELL_COUNT ||
+          next.y >= CELL_COUNT
+        )
+          continue;
+
+        const k = key(next);
+        if (visited.has(k) || blocked.has(k)) continue;
+
+        visited.add(k);
+        stack.push(next);
+      }
+    }
+
+    return count;
   }
 
   draw() {

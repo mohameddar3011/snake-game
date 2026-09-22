@@ -43,3 +43,24 @@ canvas {
   font-size: 14px;
   color: #9da5b4;
 }
+
+#aiToggle {
+  margin-top: 12px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #f0f0f0;
+  background: #21262d;
+  border: 2px solid #3fb950;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#aiToggle:hover {
+  background: #262c34;
+}
+
+#aiToggle.on {
+  background: #3fb950;
+  color: #0d1117;
+}
