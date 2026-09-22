@@ -1,0 +1,45 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1b1f23;
+  color: #f0f0f0;
+  font-family: "Segoe UI", Arial, sans-serif;
+}
+
+.wrap {
+  text-align: center;
+}
+
+h1 {
+  margin: 0 0 8px;
+  letter-spacing: 2px;
+}
+
+.hud {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  margin-bottom: 10px;
+  font-size: 15px;
+}
+
+canvas {
+  background: #0d1117;
+  border: 3px solid #3fb950;
+  border-radius: 6px;
+  display: block;
+}
+
+#message {
+  margin-top: 10px;
+  min-height: 20px;
+  font-size: 14px;
+  color: #9da5b4;
+}
