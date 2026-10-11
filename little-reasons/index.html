@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}</style>
-<title>55 Little Reasons</title>
+<title>32 Little Reasons</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Gaegu:wght@400;700&display=swap">
@@ -285,10 +285,10 @@ h2 { font-size: clamp(36px, 10vw, 48px); line-height: 1; }
   <canvas id="game" role="img" aria-label="A little mochi cat sliding left and right to catch falling hearts"></canvas>
 
   <header class="hud" id="hud" hidden>
-    <div class="meter" id="meter" role="progressbar" aria-label="Reasons collected" aria-valuemin="0" aria-valuemax="55" aria-valuenow="0">
+    <div class="meter" id="meter" role="progressbar" aria-label="Reasons collected" aria-valuemin="0" aria-valuemax="32" aria-valuenow="0">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21C12 21 3 15.500 3 9.200 3 6.300 5.200 4.500 7.500 4.500c1.800 0 3.300 1 4.500 2.700 1.200-1.700 2.700-2.700 4.500-2.700C18.800 4.500 21 6.300 21 9.200 21 15.500 12 21 12 21z"/></svg>
       <div class="bar"><i id="fill"></i></div>
-      <b id="count">0<span>/55</span></b>
+      <b id="count">0<span>/32</span></b>
     </div>
     <button class="icon-btn" id="jarBtn" type="button" aria-label="Read the reasons I have so far">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M9 9h6M9 13h4"/></svg>
@@ -307,7 +307,7 @@ h2 { font-size: clamp(36px, 10vw, 48px); line-height: 1; }
     <div class="panel">
       <svg class="big-heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21C12 21 3 15.500 3 9.200 3 6.300 5.200 4.500 7.500 4.500c1.800 0 3.300 1 4.500 2.700 1.200-1.700 2.700-2.700 4.500-2.700C18.800 4.500 21 6.300 21 9.200 21 15.500 12 21 12 21z"/></svg>
       <p class="eyebrow" id="eyebrow">For my favorite person</p>
-      <h1><span class="num" id="totalNum">55</span>little reasons</h1>
+      <h1><span class="num" id="totalNum">32</span>little reasons</h1>
       <p class="lede">Every heart you catch is one reason I love you.</p>
       <button class="btn" id="startBtn" type="button">Start catching</button>
       <p class="hint">Drag to move. Arrow keys work too.</p>
@@ -317,7 +317,7 @@ h2 { font-size: clamp(36px, 10vw, 48px); line-height: 1; }
   <div class="overlay finale" id="finale" hidden>
     <div class="panel">
       <svg class="big-heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21C12 21 3 15.500 3 9.200 3 6.300 5.200 4.500 7.500 4.500c1.800 0 3.300 1 4.500 2.700 1.200-1.700 2.700-2.700 4.500-2.700C18.800 4.500 21 6.300 21 9.200 21 15.500 12 21 12 21z"/></svg>
-      <h2>That’s all <span id="finaleNum">55</span>.</h2>
+      <h2>That’s all <span id="finaleNum">32</span>.</h2>
       <p class="lede">I could keep going. Honestly, I will, for the rest of our lives.</p>
       <p class="sign" id="sign">Yours, always</p>
       <div class="row">
@@ -350,64 +350,44 @@ const FROM = '';   // your name, signs the last screen (optional)
 const MET_ON = ''; // where you two met, e.g. 'Instagram' (optional, used in reason #6)
 
 const REASONS = [
-  "You're the only person I want next to me on fight night.",
   "Your hands are the cutest hands in the world. No further questions.",
   "You're nice to everyone, even when nobody's watching.",
   "You're so mature, and somehow still so fun.",
-  "You watch fights like you're in the corner, and I love it.",
   MET_ON ? "Meeting you on " + MET_ON + " was the luckiest thing that ever happened to me." : "Meeting you was the luckiest thing that ever happened to me.",
   "You listen before you react.",
   "My hand looks better when it's holding yours.",
   "You talk things out instead of blowing up.",
-  "Pound for pound, you're the nicest person I know.",
   "You never play games with me.",
   "I love you, and I really like you too. Your personality is why.",
-  "You get excited about a knockout like it's a surprise party.",
   "You say thank you like you mean it.",
   "You stay calm when I'm being dramatic.",
-  "You'd win every decision, and I'd let you win most arguments.",
-  "I lose every staredown with you in one second. I'm fine with it.",
-  "You're tough and kind at the same time. Very UFC, very you.",
   "Every day since we met has been better than the one before it.",
   "You make fight night feel like date night.",
   "You know the difference between a bad mood and a real problem.",
   "Holding your hand is the best part of every walk, couch, and car ride.",
   "You give people the benefit of the doubt, even me.",
   "You love football with your whole heart. I'm lucky you love me that way too.",
-  "You can talk about a fight for an hour and I'd listen for two.",
   "You make growing up look good.",
-  "You stop an argument before it turns into a brawl. Very mature, still hilarious.",
-  "You make a regular Tuesday feel like a pay-per-view.",
   "You're kind even when you're tired.",
-  "You pick your battles. I pick you.",
-  "You're the cutman of my bad days. Calm, steady, and you fix it fast.",
-  "I'd walk out with you to any song you pick.",
-  "You make me feel like a winner, and I didn't even train for it.",
   "You're soft with people and strong for them.",
-  "Post-fight interview, mic in my face, and I'd just talk about you.",
   "Your hands fit mine so well it feels like cheating.",
   "You make scary things feel smaller.",
   "You don't need to be loud to be the strongest one in the room.",
-  "You hold the belt in my heart. No rematch, no appeals.",
   "You're patient, even when I take forever.",
   "You take care of people without making a big deal of it.",
   "You know when to be serious and when to be silly.",
-  "I'd pause any fight for you. That's real love.",
   "You make me want to be someone who deserves you.",
   "You're mature enough to say sorry and sweet enough to mean it.",
-  "I'll tap out of anything before I ever tap out on you.",
-  "Your face when your fighter wins is my favorite show.",
   "You make me feel safe without even trying.",
-  "You're proof that nice people don't finish last.",
-  "You're the main event of my whole week.",
   "You make forever sound like a good idea.",
   "I still can't believe we found each other.",
-  "You're my favorite person to win with, lose with, and rewatch the replay with.",
-  "Every round with you is my favorite round.",
-  "Because it's you. Undisputed, undefeated, and I get to be in your corner."
+  "Because it's you. It was always going to be you. And I'm just getting started."
 ];
-const TOTAL = REASONS.length; // five rounds of ten, then overtime
-const MILESTONES = { 10: 'round 1 done', 20: 'round 2 done', 30: 'round 3 done', 40: 'round 4 done', 50: 'overtime!' };
+const TOTAL = REASONS.length;
+const MILESTONES = {};
+MILESTONES[Math.round(TOTAL * 0.25)] = 'a quarter down';
+MILESTONES[Math.round(TOTAL * 0.5)] = 'halfway there';
+MILESTONES[Math.round(TOTAL * 0.75)] = 'almost there';
 
 /* ============================================================
    Setup
