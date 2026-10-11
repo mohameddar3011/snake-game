@@ -745,7 +745,7 @@ soundBtn.addEventListener("click", () => {
 document.addEventListener("keydown", (e) => {
   if (e.code === "Space") {
     e.preventDefault();
-    setPaused(!paused);
+    if (!e.repeat) setPaused(!paused);
   }
 });
 
@@ -763,7 +763,10 @@ function setFace(d, source) {
   const sy = (source.height - side) * 0.3;     // portraits: favor the upper part
   const c = document.createElement("canvas");
   c.width = c.height = FACE_PX;
-  c.getContext("2d").drawImage(source, (source.width - side) / 2, sy, side, side, 0, 0, FACE_PX, FACE_PX);
+  const g = c.getContext("2d");
+  g.fillStyle = d.skin;                        // JPEG has no alpha, so cut-out photos need a backdrop
+  g.fillRect(0, 0, FACE_PX, FACE_PX);
+  g.drawImage(source, (source.width - side) / 2, sy, side, side, 0, 0, FACE_PX, FACE_PX);
   d.face = c;
   try { localStorage.setItem(storeKey(d), c.toDataURL("image/jpeg", 0.85)); } catch (e) { /* storage unavailable */ }
   if (paused) render(clock());
