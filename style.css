@@ -30,11 +30,87 @@ h1 {
   font-size: 15px;
 }
 
+.hud span {
+  display: inline-block;
+}
+
+.hud span.pop {
+  animation: pop 0.3s ease-out;
+}
+
 canvas {
   background: #0d1117;
   border: 3px solid #3fb950;
   border-radius: 6px;
   display: block;
+  transition: border-color 0.2s;
+}
+
+canvas.dead {
+  border-color: #f85149;
+}
+
+canvas.shake {
+  animation: shake 0.45s ease-in-out;
+}
+
+canvas.levelup {
+  animation: glow 0.8s ease-out;
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.5);
+    color: #56d364;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  15% {
+    transform: translate(-7px, 2px);
+  }
+  30% {
+    transform: translate(6px, -3px);
+  }
+  45% {
+    transform: translate(-5px, 2px);
+  }
+  60% {
+    transform: translate(4px, -1px);
+  }
+  80% {
+    transform: translate(-2px, 1px);
+  }
+}
+
+@keyframes glow {
+  0% {
+    box-shadow: 0 0 0 rgba(63, 185, 80, 0);
+  }
+  35% {
+    box-shadow: 0 0 28px rgba(63, 185, 80, 0.95);
+  }
+  100% {
+    box-shadow: 0 0 0 rgba(63, 185, 80, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud span.pop,
+  canvas.shake,
+  canvas.levelup {
+    animation: none;
+  }
 }
 
 #message {
