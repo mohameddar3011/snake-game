@@ -1,0 +1,1203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fight Night</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: #07060f;
+    color: #f0f0f0;
+    font-family: "Segoe UI", Arial, sans-serif;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    max-width: 960px;
+    aspect-ratio: 960 / 540;
+    border-radius: 10px;
+    box-shadow: 0 0 40px rgba(248, 81, 73, 0.3);
+  }
+  .controls { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; margin-top: 14px; }
+  .faces { margin-top: 10px; font-size: 14px; color: #b9b3c9; }
+  button {
+    padding: 8px 16px;
+    font: 600 14px "Segoe UI", Arial, sans-serif;
+    color: #f0f0f0;
+    background: #241313;
+    border: 2px solid #f85149;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  button:hover { background: #331a1a; }
+  button.on { background: #f85149; color: #1a0808; }
+  .note { margin: 10px 0 0; font-size: 12px; color: #8b8fa3; text-align: center; }
+</style>
+</head>
+<body>
+  <canvas id="stage" width="960" height="540" aria-label="Cartoon MMA fight in a cage"></canvas>
+  <div class="controls">
+    <button id="playBtn">Pause</button>
+    <button id="soundBtn">Sound: off</button>
+  </div>
+  <div class="controls faces">
+    <span>Photo for a head:</span>
+    <button data-face="islam">Islam</button>
+    <button data-face="khamzat">Khamzat</button>
+    <button data-face="hasbulla">Hasbulla</button>
+    <button id="clearFaces">Clear</button>
+    <input type="file" id="facePicker" accept="image/*" hidden>
+  </div>
+  <p class="note">Stylized cartoon slapstick, not real footage. Space pauses. Photos you pick stay in your browser.</p>
+
+<script>
+const W = 960, H = 540;
+const FLOOR = 472;            // y of the soles of the shoes
+const BPM = 140;
+const BEAT = 60 / BPM;        // seconds per beat
+const TOTAL = 36;             // beats in one loop of the fight
+const LOOP = TOTAL * BEAT;
+const S = 1.25;               // base fighter scale
+
+const canvas = document.getElementById("stage");
+const ctx = canvas.getContext("2d");
+const dpr = Math.min(window.devicePixelRatio || 1, 2);
+canvas.width = W * dpr;
+canvas.height = H * dpr;
+ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, k) => a + (b - a) * k;
+const smooth = (x) => { x = clamp(x); return x * x * (3 - 2 * x); };
+const lerpPt = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+function easeOutBack(t) {
+  const c1 = 1.70158, c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+}
+// Piecewise value over beats. Keys are [beat, value] or [beat, value, "lin"]
+// (linear into that key instead of eased).
+function keyval(keys, b) {
+  if (b <= keys[0][0]) return keys[0][1];
+  for (let i = 1; i < keys.length; i++) {
+    if (b <= keys[i][0]) {
+      const [b0, v0] = keys[i - 1], [b1, v1, mode] = keys[i];
+      const u = (b - b0) / (b1 - b0);
+      return lerp(v0, v1, mode === "lin" ? u : smooth(u));
+    }
+  }
+  return keys[keys.length - 1][1];
+}
+
+// ---------------------------------------------------------------- skeleton
+// Angles are measured from "straight down", positive toward screen-right; a
+// child limb's angle is relative to its parent's.
+const LEN = { torso: 56, thigh: 38, shin: 36, upper: 30, fore: 28, head: 18 };
+
+function walk(p, angle, len) {
+  return { x: p.x + Math.sin(angle) * len, y: p.y + Math.cos(angle) * len };
+}
+
+function skeleton(pose) {
+  const hip = { x: 0, y: 0 };
+  const neck = { x: Math.sin(pose.lean) * LEN.torso, y: -Math.cos(pose.lean) * LEN.torso };
+  const rx = Math.cos(pose.lean), ry = Math.sin(pose.lean);
+  const shoulderL = { x: neck.x - rx * pose.sw, y: neck.y - ry * pose.sw };
+  const shoulderR = { x: neck.x + rx * pose.sw, y: neck.y + ry * pose.sw };
+
+  const leg = (h, [a, b]) => {
+    const knee = walk(h, a, LEN.thigh);
+    return { hip: h, knee, foot: walk(knee, a + b, LEN.shin) };
+  };
+  const arm = (s, [a, b]) => {
+    const elbow = walk(s, a, LEN.upper);
+    return { shoulder: s, elbow, hand: walk(elbow, a + b, LEN.fore) };
+  };
+
+  const headAngle = pose.lean + pose.tilt;
+  return {
+    hip, neck, headAngle,
+    legL: leg({ x: -8, y: 0 }, pose.legL),
+    legR: leg({ x: 8, y: 0 }, pose.legR),
+    armL: arm(shoulderL, pose.armL),
+    armR: arm(shoulderR, pose.armR),
+  };
+}
+
+// ------------------------------------------------------------------- poses
+// Every pose below is written for a fighter FACING RIGHT; mirror() flips it
+// for one facing left. "R" limbs are the lead (nearest the opponent) side.
+const BASE = {
+  jump: 0, lean: 0, tilt: 0, sw: 11, tw: 30, dx: 0, open: 0.2,
+  legL: [-0.12, 0.12], legR: [0.12, -0.12],
+  armL: [-0.2, 0.1], armR: [0.2, -0.1],
+};
+const withBase = (o) => ({ ...BASE, ...o });
+
+function lerpPose(a, b, k) {
+  const out = { ...a };
+  for (const key in b) {
+    out[key] = Array.isArray(b[key])
+      ? b[key].map((v, i) => lerp(a[key][i], v, k))
+      : lerp(a[key], b[key], k);
+  }
+  return out;
+}
+
+function mirror(p) {
+  const neg = (a) => a.map((v) => -v);
+  return {
+    ...p,
+    legL: neg(p.legR), legR: neg(p.legL),
+    armL: neg(p.armR), armR: neg(p.armL),
+    lean: -p.lean, tilt: -p.tilt, dx: -p.dx,
+  };
+}
+
+// Base stances, selected per fighter over time.
+const STATE = {
+  guard(b) {
+    const bob = Math.sin(2 * Math.PI * b);
+    return withBase({
+      lean: 0.08 + 0.02 * bob, sw: 5, tw: 26, open: 0.1,
+      legR: [0.65, -(0.55 + 0.07 * bob)], legL: [-0.45, 0.4 + 0.07 * bob],
+      armR: [0.6, 1.95], armL: [0.1, 2.5],
+    });
+  },
+  tired(b) {
+    return withBase({
+      lean: 0.36 + 0.04 * Math.sin(b * 7), tilt: 0.1, sw: 6, tw: 26, open: 0.6,
+      legR: [0.6, -0.7], legL: [-0.4, 0.5],
+      armR: [0.2, 0.35], armL: [0.05, 0.3],
+    });
+  },
+  run(b) {
+    const ph = b * 2 * Math.PI * 1.5;
+    return withBase({
+      lean: 0.2, sw: 6, tw: 26, jump: 5 * Math.abs(Math.sin(ph)), open: 0.5,
+      legR: [0.8 * Math.sin(ph), -(0.5 + 0.5 * Math.cos(ph))],
+      legL: [-0.8 * Math.sin(ph), -(0.5 - 0.5 * Math.cos(ph))],
+      armR: [0.9 * Math.sin(ph + Math.PI), 1.4], armL: [0.9 * Math.sin(ph), 1.4],
+    });
+  },
+  crouch() {
+    return withBase({
+      lean: 0.35, sw: 6, tw: 26, open: 0.3,
+      legR: [0.95, -1.5], legL: [-0.7, 1.2],
+      armR: [-0.9, 0.3], armL: [-1.1, 0.2],
+    });
+  },
+  ko() {
+    return withBase({
+      tilt: 0.2, open: 0.7,
+      legR: [0.3, -0.05], legL: [-0.2, 0.05],
+      armR: [1.0, 0.3], armL: [-1.2, -0.3],
+    });
+  },
+  // Front-facing victory hops (the same move as the dance page).
+  victory(b) {
+    const f = Math.abs(Math.sin(Math.PI * b));
+    const knee = 0.3 * (1 - f) + 0.7 * f;
+    return withBase({
+      jump: 22 * f, open: 0.9,
+      tilt: 0.12 * Math.sin(2 * Math.PI * b),
+      legL: [-0.14, knee], legR: [0.14, -knee],
+      armL: [-(0.5 + 2.4 * f), -(0.2 * (1 - f) + 0.15)],
+      armR: [0.5 + 2.4 * f, 0.2 * (1 - f) + 0.15],
+    });
+  },
+};
+
+// Flung-back arms for a heavy hit.
+const FLINCH = { armR: [-1.0, -0.5], armL: [-1.5, -0.4], open: 1 };
+
+// Strikes are overlays on the stance. `contact` is how far through the action
+// the hit lands (0..1); the pose is blended in up to that point, then back out.
+const STRIKES = {
+  jab:   { dur: 0.9, contact: 0.3, pose: { armR: [1.5, 0.0], armL: [0.1, 2.5], lean: 0.16, dx: 12, legR: [0.85, -0.8], tilt: 0.04 } },
+  cross: { dur: 0.9, contact: 0.3, pose: { armL: [1.45, 0.05], armR: [0.6, 1.95], lean: 0.24, dx: 10, legL: [-0.7, 0.85], tilt: 0.05 } },
+  upper: { dur: 0.9, contact: 0.3, pose: { armL: [1.05, 1.85], lean: 0.1, dx: 8, legR: [0.8, -0.9] } },
+  kick:  { dur: 1.0, contact: 0.4, pose: { legR: [1.4, -0.15], lean: -0.25, dx: 14, armR: [-0.5, 2.3], armL: [0.2, 2.5] } },
+  fly:   { dur: 0.9, contact: 0.5, pose: (u) => ({
+    legR: [1.5, -0.1], legL: [0.7, 1.3], lean: -1.0,
+    armR: [-1.6, 0.3], armL: [-2.0, 0.2], jump: 46 * Math.sin(Math.PI * u),
+  }) },
+};
+const weight = (u, c) => (u < c ? smooth(u / c) : 1 - smooth((u - c) / (1 - c)));
+
+// ------------------------------------------------------------- choreography
+// Times are in beats. `hits` land on that fighter (dir = which way the blow
+// pushes them on screen; back = struck from behind).
+const FIGHTERS = [
+  {
+    key: "khamzat", name: "KHAMZAT", scale: 1.04, faceScale: 1.95, face: null, facing: -1, glow: "#ff4d6d",
+    skin: "#d6a07a", shirt: "#16181d", sleeve: 0.55, pants: "#46513c", shoes: "#e8e8e8",
+    hat: "buzz", beard: "#20150f", wolf: true,
+    x: [[0, 735], [2.4, 545], [15.18, 545], [15.7, 650]],
+    states: [{ from: 0, name: "guard" }, { from: 9.4, name: "tired" }, { from: 15.2, name: "ko" }],
+    actions: [{ b: 4.0, type: "cross" }, { b: 6.0, type: "kick" }, { b: 8.0, type: "cross" }],
+    hits: [
+      { b: 3.27, power: 1, dir: 1 }, { b: 5.27, power: 1, dir: 1 }, { b: 7.27, power: 2, dir: 1 },
+      { b: 15.18, power: 3, dir: 1, dmg: 80 },
+    ],
+    fall: { b: 15.2, dir: 1 },
+    stun: [[7.3, 9.4]],
+  },
+  {
+    key: "islam", name: "ISLAM", scale: 1.0, faceScale: 1.95, face: null, facing: 1, glow: "#3fb950",
+    skin: "#d9a27a", shirt: "#f4f4f4", sleeve: 0.55, pants: "#1d2a44", shoes: "#f4f4f4",
+    hat: "papakha", beard: "#2a1a12",
+    x: [[0, 225], [2.4, 385], [14.45, 385], [14.9, 400]],
+    states: [{ from: 0, name: "guard" }, { from: 9.0, name: "tired" }, { from: 14.4, name: "ko" }],
+    actions: [{ b: 3.0, type: "jab" }, { b: 5.0, type: "cross" }, { b: 7.0, type: "upper" }],
+    hits: [
+      { b: 4.27, power: 1, dir: -1 }, { b: 6.4, power: 1, dir: -1 }, { b: 8.27, power: 2, dir: -1 },
+      { b: 14.45, power: 3, dir: 1, back: true, dmg: 80 },
+    ],
+    fall: { b: 14.5, dir: 1 },
+    stun: [[8.3, 9.0]],
+  },
+  {
+    key: "hasbulla", name: "HASBULLA", scale: 0.58, faceScale: 2.5, face: null, facing: 1, glow: "#ffd23f",
+    skin: "#e4b48e", shirt: "#d62839", sleeve: 1.2, pants: "#d62839", shoes: "#ffffff",
+    hat: "cap", shades: true, zip: true,
+    x: [[0, 105], [10, 105], [12.9, 278, "lin"], [13.6, 286], [14.0, 286], [14.45, 328], [14.9, 338], [15.8, 338]],
+    states: [
+      { from: 0, name: "guard" }, { from: 10.0, name: "run" }, { from: 13.5, name: "crouch" },
+      { from: 14.05, name: "guard" }, { from: 15.6, name: "victory" },
+    ],
+    actions: [
+      { b: 2.2, type: "jab" }, { b: 4.0, type: "cross" }, { b: 5.5, type: "jab" },
+      { b: 7.0, type: "cross" }, { b: 8.5, type: "jab" }, { b: 14.0, type: "fly" },
+    ],
+    hits: [],
+    fall: null,
+    stun: [],
+  },
+];
+const byKey = Object.fromEntries(FIGHTERS.map((f) => [f.key, f]));
+const DRAW_ORDER = ["khamzat", "islam", "hasbulla"];
+const FALL_BEATS = 0.9;
+
+const WORDS = ["POW!", "BAM!", "WHAP!", "BIFF!", "THWACK!", "KAPOW!"];
+const HEAVY_WORDS = ["WHAM!", "CRACK!", "BONK!"];
+
+// Flatten the hits into one list for effects (words, shake, health bars).
+const HITS = [];
+for (const f of FIGHTERS) for (const h of f.hits) HITS.push({ ...h, victim: f.key });
+HITS.sort((a, b) => a.b - b.b);
+HITS.forEach((h, i) => { h.word = h.power >= 2 ? HEAVY_WORDS[i % 3] : WORDS[i % WORDS.length]; });
+
+// Bodies hitting the canvas shake the screen too.
+const LANDINGS = FIGHTERS.filter((f) => f.fall).map((f) => ({ b: f.fall.b + FALL_BEATS * 0.95, power: 2 }));
+const IMPACTS = [...HITS.map((h) => ({ b: h.b, power: h.power })), ...LANDINGS];
+
+// Sound effects keyed to the action, for both the page and the video's audio.
+const SFX = [
+  { b: 0, k: "bell" }, { b: 0.45, k: "bell" },
+  ...HITS.map((h) => ({ b: h.b, k: h.power >= 2 ? "heavy" : "hit" })),
+  { b: 14.1, k: "whoosh" },
+  ...LANDINGS.map((l) => ({ b: l.b, k: "heavy" })),
+  { b: 15.6, k: "roar" },
+  { b: 18.6, k: "bell" }, { b: 19.05, k: "bell" },
+].sort((a, c) => a.b - c.b);
+
+// State of one fighter at beat b: the final pose (already mirrored for the
+// way they face), where they stand, how far they have fallen, and effects.
+function fighterAt(f, b) {
+  let i = 0;
+  for (let j = 0; j < f.states.length; j++) if (b >= f.states[j].from) i = j;
+  const cur = f.states[i];
+  let pose = STATE[cur.name](b);
+  if (i > 0) {
+    const w = smooth((b - cur.from) / 0.3);
+    if (w < 1) pose = lerpPose(STATE[f.states[i - 1].name](b), pose, w);
+  }
+
+  for (const a of f.actions) {
+    const st = STRIKES[a.type];
+    const u = (b - a.b) / st.dur;
+    if (u > 0 && u < 1) {
+      const sp = typeof st.pose === "function" ? st.pose(u) : st.pose;
+      pose = lerpPose(pose, sp, weight(u, st.contact));
+    }
+  }
+
+  let dxHit = 0, flash = 0, hurt = 0;
+  for (const h of f.hits) {
+    const d = b - h.b;
+    if (d < 0) continue;
+    const r = Math.exp(-4 * d);
+    const sgn = h.back ? 1 : -1;
+    pose.lean += sgn * 0.32 * h.power * r;
+    pose.tilt += sgn * 0.5 * h.power * r;
+    if (h.power >= 2) pose = lerpPose(pose, FLINCH, 0.8 * r);
+    pose.open = Math.max(pose.open, r);
+    flash = Math.max(flash, r);
+    hurt = Math.max(hurt, r);
+    dxHit += h.dir * 24 * h.power * (1 - Math.exp(-12 * d)) * Math.exp(-1.4 * d);
+  }
+
+  if (f.facing < 0) pose = mirror(pose);
+
+  let rot = 0;
+  if (f.fall && b >= f.fall.b) {
+    const u = clamp((b - f.fall.b) / FALL_BEATS);
+    rot = f.fall.dir * 1.5 * u * u;
+  }
+  const x = keyval(f.x, b) + pose.dx + dxHit;
+  const stunned = f.stun.some(([from, to]) => b >= from && b < to) || (f.fall && b >= f.fall.b + 0.4);
+  return { pose, x, rot, flash, hurt, stunned };
+}
+
+// ---------------------------------------------------------------- fighters
+function limb(pts, color, width) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.stroke();
+}
+
+const headPos = {};   // where each head was drawn this frame (for effects)
+
+function drawFighter(f, st) {
+  const { pose } = st;
+  const k = skeleton(pose);
+  const s = S * f.scale;
+  const hop = pose.jump * (0.5 + 0.5 * f.scale);
+  const shoe = 2 + 5.5 * s - 3;
+  const lowest = Math.max(k.legL.foot.y, k.legR.foot.y);
+  const baseY = FLOOR - shoe - lowest * s - hop;
+
+  // Falling pivots about the feet; a lying body sits slightly off the floor.
+  const pivot = { x: st.x, y: FLOOR - shoe };
+  const cs = Math.cos(st.rot), sn = Math.sin(st.rot);
+  const lift = 16 * s * Math.abs(sn);
+  const P = (p) => {
+    const rx = st.x + p.x * s - pivot.x;
+    const ry = baseY + p.y * s - pivot.y;
+    return { x: pivot.x + rx * cs - ry * sn, y: pivot.y + rx * sn + ry * cs - lift };
+  };
+
+  const hipMid = P({ x: 0, y: 0 });
+  const air = 1 - hop / 90;
+  ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+  ctx.beginPath();
+  ctx.ellipse(hipMid.x, FLOOR + 2, (48 + 70 * Math.abs(sn)) * f.scale * air, 9 * f.scale * air, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Legs and shoes.
+  for (const [leg, side] of [[k.legL, -1], [k.legR, 1]]) {
+    limb([P(leg.hip), P(leg.knee), P(leg.foot)], f.pants, 15 * s);
+    const ft = P(leg.foot);
+    ctx.fillStyle = f.shoes;
+    ctx.beginPath();
+    ctx.ellipse(ft.x + side * 3 * cs, ft.y + 2, 10 * s, 5.5 * s, st.rot, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Torso.
+  const neck = P(k.neck);
+  limb([lerpPt(hipMid, neck, 0.12), neck], f.shirt, pose.tw * s);
+  if (f.zip) limb([lerpPt(neck, hipMid, 0.05), lerpPt(neck, hipMid, 0.85)], "#ffffff", 2);
+  if (f.wolf) {
+    ctx.save();
+    const c = lerpPt(neck, hipMid, 0.38);
+    ctx.translate(c.x, c.y);
+    ctx.rotate(st.rot);
+    drawWolf({ x: 0, y: 0 });
+    ctx.restore();
+  }
+
+  // Arms: bare skin, a sleeve over the top, and an MMA glove on the end.
+  for (const arm of [k.armL, k.armR]) {
+    const sh = P(arm.shoulder), e = P(arm.elbow), h = P(arm.hand);
+    limb([sh, e, h], f.skin, 9.5 * s);
+    if (f.sleeve >= 1) limb([sh, e, lerpPt(e, h, 0.85)], f.shirt, 12 * s);
+    else limb([sh, lerpPt(sh, e, f.sleeve)], f.shirt, 12 * s);
+    limb([lerpPt(e, h, 0.66), lerpPt(e, h, 0.86)], f.glow, 8 * s);
+    ctx.fillStyle = "#15161a";
+    ctx.beginPath();
+    ctx.arc(h.x, h.y, 7.5 * s, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.18)";
+    ctx.beginPath();
+    ctx.arc(h.x - 2 * s, h.y - 2.5 * s, 2.6 * s, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Head sits on the neck; a photo head is bigger, so lift it a little.
+  const R = LEN.head * s;
+  const lift2 = f.face ? (f.faceScale * R - R) * 0.6 : 0;
+  const reach = (LEN.head + 6) * s + lift2;
+  const ang = k.headAngle + st.rot;
+  const hc = { x: neck.x + Math.sin(ang) * reach, y: neck.y - Math.cos(ang) * reach };
+  drawHead(f, hc, ang, s, pose.open, st.flash);
+  headPos[f.key] = hc;
+}
+
+function drawWolf(c) {
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.beginPath();
+  ctx.arc(c.x, c.y + 2, 7, 0, Math.PI * 2);
+  ctx.fill();
+  for (const sd of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(c.x + sd * 2, c.y - 3);
+    ctx.lineTo(c.x + sd * 8, c.y - 12);
+    ctx.lineTo(c.x + sd * 8.5, c.y - 1);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.fillStyle = "#16181d";
+  for (const sd of [-1, 1]) {
+    ctx.beginPath();
+    ctx.arc(c.x + sd * 3, c.y + 1, 1.1, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawHead(d, c, angle, s, open, flash) {
+  const R = LEN.head * s;
+  ctx.save();
+  ctx.translate(c.x, c.y);
+  ctx.rotate(angle);
+
+  if (d.face) {
+    const FR = d.faceScale * R;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(0, 0, FR, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(d.face, -FR, -FR, FR * 2, FR * 2);
+    if (flash > 0.02) {
+      ctx.fillStyle = `rgba(248, 81, 73, ${0.45 * flash})`;
+      ctx.fillRect(-FR, -FR, FR * 2, FR * 2);
+    }
+    ctx.restore();
+    ctx.strokeStyle = d.glow;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, FR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  ctx.fillStyle = d.skin;
+  for (const sd of [-1, 1]) {
+    ctx.beginPath();
+    ctx.arc(sd * R, 0.1 * R, 0.25 * R, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.beginPath();
+  ctx.arc(0, 0, R, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (d.beard) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(0, 0, R, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = d.beard;
+    ctx.beginPath();
+    ctx.ellipse(0, 0.95 * R, 1.15 * R, 0.82 * R, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  if (d.hat === "papakha") {
+    ctx.fillStyle = "#1d1714";
+    ctx.beginPath();
+    ctx.roundRect(-1.0 * R, -1.65 * R, 2.0 * R, 1.3 * R, 0.3 * R);
+    ctx.fill();
+    for (let i = 0; i < 9; i++) {
+      const x = -1.0 * R + (i / 8) * 2.0 * R;
+      ctx.beginPath();
+      ctx.arc(x, -0.42 * R, 0.2 * R, 0, Math.PI * 2);
+      ctx.arc(x, -1.7 * R, 0.24 * R, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    for (const sd of [-1, 1]) {
+      for (const y of [-0.8, -1.2]) {
+        ctx.beginPath();
+        ctx.arc(sd * 1.02 * R, y * R, 0.2 * R, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  } else if (d.hat === "buzz" || d.hat === "cap") {
+    ctx.fillStyle = d.hat === "cap" ? "#0f0f12" : "#1b1b1b";
+    ctx.beginPath();
+    ctx.moveTo(-0.98 * R, -0.1 * R);
+    ctx.arc(0, 0, R + 0.5, Math.PI, Math.PI * 2);
+    ctx.quadraticCurveTo(0, -0.62 * R, -0.98 * R, -0.1 * R);
+    ctx.fill();
+    if (d.hat === "cap") {
+      ctx.beginPath();
+      ctx.ellipse(0, -0.42 * R, 1.25 * R, 0.2 * R, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  if (d.shades) {
+    ctx.fillStyle = "#0b0b0b";
+    for (const x of [-0.8 * R, 0.08 * R]) {
+      ctx.beginPath();
+      ctx.roundRect(x, -0.2 * R, 0.72 * R, 0.42 * R, 0.12 * R);
+      ctx.fill();
+    }
+    ctx.fillRect(-0.1 * R, -0.12 * R, 0.2 * R, 0.07 * R);
+  } else {
+    for (const sd of [-1, 1]) {
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(sd * 0.38 * R, 0.02 * R, 0.17 * R, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#14110f";
+      ctx.beginPath();
+      ctx.arc(sd * 0.38 * R, 0.04 * R, 0.09 * R, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  const mh = (0.07 + 0.2 * clamp(open)) * R;
+  ctx.fillStyle = "#6e1a28";
+  ctx.beginPath();
+  ctx.ellipse(0, 0.5 * R, 0.34 * R, mh, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// ------------------------------------------------------------------- arena
+const rnd = (i, n) => { const x = Math.sin(i * 12.9898 + n * 78.233) * 43758.5453; return x - Math.floor(x); };
+
+function impulse(b) {
+  let v = 0;
+  for (const im of IMPACTS) {
+    const d = b - im.b;
+    if (d >= 0 && d < 2) v = Math.max(v, im.power * Math.exp(-5 * d));
+  }
+  return v;
+}
+
+function shakeAt(b) {
+  let x = 0, y = 0;
+  for (const im of IMPACTS) {
+    const d = b - im.b;
+    if (im.power < 2 || d < 0 || d > 1.5) continue;
+    const amp = 5 * im.power * Math.exp(-7 * d);
+    x += amp * Math.sin(d * 55);
+    y += amp * 0.6 * Math.cos(d * 47 + 1);
+  }
+  return { x, y };
+}
+
+function drawCrowd(b, t) {
+  const cheer = b > 15.2 ? 5 : 2;
+  const hit = impulse(b);
+  for (let row = 0; row < 4; row++) {
+    const baseY = 170 + row * 52;
+    const light = 7 + row * 3;
+    for (let i = 0, x = -10; x < W + 20; i++, x += 15 + row * 2) {
+      const bob = cheer * Math.abs(Math.sin(t * (3 + rnd(i, row) * 2) + rnd(i, row + 9) * 6)) + hit * 2.2 * rnd(i, row + 3);
+      const y = baseY - bob;
+      ctx.fillStyle = `hsl(${240 + rnd(i, row + 5) * 50}, 30%, ${light}%)`;
+      ctx.beginPath();
+      ctx.arc(x, y, 9 + row, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillRect(x - 11 - row, y + 6, 22 + row * 2, 60);
+    }
+  }
+  // Camera flashes.
+  for (let k = 0; k < 26; k++) {
+    const p = (t * (0.7 + rnd(k, 1) * 0.6) + rnd(k, 2)) % 1;
+    if (p > 0.05) continue;
+    const a = 1 - p / 0.05;
+    const x = rnd(k, 3) * W, y = 130 + rnd(k, 4) * 230;
+    ctx.fillStyle = `rgba(255,255,255,${a})`;
+    ctx.beginPath();
+    ctx.arc(x, y, 3 + 4 * a, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255,255,255,${a * 0.7})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x - 10 * a, y); ctx.lineTo(x + 10 * a, y);
+    ctx.moveTo(x, y - 10 * a); ctx.lineTo(x, y + 10 * a);
+    ctx.stroke();
+  }
+}
+
+const FENCE_TOP = 92, FENCE_BOTTOM = 396;
+
+function drawCage() {
+  // Chain-link mesh over three back panels.
+  const panels = [[90, 250], [250, 710], [710, 870]];
+  ctx.save();
+  ctx.strokeStyle = "rgba(190, 200, 225, 0.2)";
+  ctx.lineWidth = 1;
+  for (const [x0, x1] of panels) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x0, FENCE_TOP + 8, x1 - x0, FENCE_BOTTOM - FENCE_TOP - 8);
+    ctx.clip();
+    ctx.beginPath();
+    const h = FENCE_BOTTOM - FENCE_TOP;
+    for (let x = x0 - h; x < x1 + h; x += 17) {
+      ctx.moveTo(x, FENCE_TOP); ctx.lineTo(x + h, FENCE_BOTTOM);
+      ctx.moveTo(x + h, FENCE_TOP); ctx.lineTo(x, FENCE_BOTTOM);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+
+  // Top rail, padded skirt, corner posts.
+  ctx.fillStyle = "#2a2d36";
+  ctx.fillRect(84, FENCE_TOP - 6, 792, 12);
+  ctx.fillStyle = "#171921";
+  ctx.fillRect(84, FENCE_BOTTOM - 26, 792, 30);
+  for (const [x, c] of [[90, "#c0392b"], [250, "#2a2d36"], [710, "#2a2d36"], [870, "#2e6bd1"]]) {
+    ctx.fillStyle = c;
+    ctx.fillRect(x - 7, FENCE_TOP - 6, 14, FENCE_BOTTOM - FENCE_TOP + 10);
+  }
+}
+
+function drawMat(b) {
+  const g = ctx.createLinearGradient(0, FENCE_BOTTOM, 0, H);
+  g.addColorStop(0, "#1b4aa0");
+  g.addColorStop(1, "#0d2a63");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.moveTo(84, FENCE_BOTTOM);
+  ctx.lineTo(876, FENCE_BOTTOM);
+  ctx.lineTo(1060, H);
+  ctx.lineTo(-100, H);
+  ctx.closePath();
+  ctx.fill();
+
+  // Seams.
+  ctx.strokeStyle = "rgba(255,255,255,0.08)";
+  ctx.lineWidth = 1;
+  for (let i = -6; i <= 6; i++) {
+    ctx.beginPath();
+    ctx.moveTo(W / 2 + i * 70, FENCE_BOTTOM);
+    ctx.lineTo(W / 2 + i * 150, H);
+    ctx.stroke();
+  }
+
+  // Center octagon and logo, squashed to sit on the floor in perspective.
+  ctx.save();
+  ctx.translate(W / 2, 470);
+  ctx.scale(1, 0.24);
+  ctx.strokeStyle = "rgba(255,255,255,0.35)";
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+    const x = Math.cos(a) * 250, y = Math.sin(a) * 250;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.stroke();
+  ctx.fillStyle = "rgba(255,255,255,0.16)";
+  ctx.font = "900 78px 'Segoe UI', Arial, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("FIGHT NIGHT", 0, 6);
+  ctx.restore();
+}
+
+function drawLights(b) {
+  const punch = Math.min(1, impulse(b) * 0.5);
+  ctx.globalCompositeOperation = "lighter";
+  for (const x of [220, 480, 740]) {
+    const g = ctx.createLinearGradient(0, 0, 0, FENCE_BOTTOM + 60);
+    g.addColorStop(0, "rgba(255, 244, 220, 0.30)");
+    g.addColorStop(1, `rgba(255, 244, 220, ${0.03 + 0.08 * punch})`);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(x - 14, 0); ctx.lineTo(x + 14, 0);
+    ctx.lineTo(x + 140, FENCE_BOTTOM + 60); ctx.lineTo(x - 140, FENCE_BOTTOM + 60);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.globalCompositeOperation = "source-over";
+}
+
+// --------------------------------------------------------------- effects
+function star(x, y, r, fill) {
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = "#8a5a00";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    const rr = i % 2 === 0 ? r : r * 0.45;
+    ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+}
+
+function drawBurst(h, b) {
+  const d = b - h.b;
+  if (d < 0 || d > 0.7) return;
+  const hp = headPos[h.victim];
+  if (!hp) return;
+  // The burst sits on the side the blow came from.
+  const x = hp.x - h.dir * 58;
+  const y = hp.y - 18;
+  const pop = easeOutBack(clamp(d / 0.15));
+  const fade = clamp((0.7 - d) / 0.25);
+  const r = (26 + 12 * h.power) * pop;
+  ctx.save();
+  ctx.globalAlpha = fade;
+  ctx.translate(x, y);
+  ctx.rotate(((h.b * 7) % 1) * 0.5 - 0.25);
+  ctx.fillStyle = h.power >= 2 ? "#ff5a36" : "#ffd23f";
+  ctx.strokeStyle = "#7a0f0f";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  for (let i = 0; i < 20; i++) {
+    const a = (i / 20) * Math.PI * 2;
+    const rr = i % 2 === 0 ? r : r * 0.6;
+    ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#1a0808";
+  ctx.font = `900 ${14 + 4 * h.power}px 'Segoe UI', Arial, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(h.word, 0, 1);
+  ctx.restore();
+}
+
+function drawStunned(f, st, b) {
+  const hp = headPos[f.key];
+  if (!st.stunned || !hp) return;
+  const s = S * f.scale;
+  for (let i = 0; i < 3; i++) {
+    const a = b * 5 + (i * Math.PI * 2) / 3;
+    star(hp.x + Math.cos(a) * 24 * s, hp.y - 30 * s + Math.sin(a) * 6 * s, 6.5 * s + 2, "#ffd23f");
+  }
+}
+
+function drawSweat(f, b) {
+  const hp = headPos[f.key];
+  if (!hp) return;
+  const s = S * f.scale;
+  for (let k = 0; k < 3; k++) {
+    const p = (b * 1.1 + k / 3) % 1;
+    const x = hp.x + (k % 2 ? 1 : -1) * (22 + 6 * k) * s;
+    const y = hp.y - 10 * s + p * 34 * s;
+    ctx.fillStyle = `rgba(140, 200, 255, ${1 - p})`;
+    ctx.beginPath();
+    ctx.ellipse(x, y, 2.6 * s, 4 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawBubble(f, text, b, from, to) {
+  if (b < from || b > to) return;
+  const hp = headPos[f.key];
+  if (!hp) return;
+  const pop = easeOutBack(clamp((b - from) / 0.2));
+  const x = hp.x + 4, y = hp.y - 62 * S * f.scale * 0.9 - 12;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(pop, pop);
+  ctx.fillStyle = "#ffffff";
+  ctx.strokeStyle = "#1a0808";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 24, 20, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-6, 17); ctx.lineTo(-2, 30); ctx.lineTo(7, 18);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#e11d2e";
+  ctx.font = "900 28px 'Segoe UI', Arial, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, 0, 2);
+  ctx.restore();
+}
+
+// Confetti is a pure function of time, so a frame can be rendered at any t.
+const CONFETTI = Array.from({ length: 80 }, (_, i) => ({
+  x: rnd(i, 1) * W, y: rnd(i, 2) * (H + 40), speed: 50 + rnd(i, 3) * 80, drift: 10 + rnd(i, 4) * 25,
+  hue: Math.floor(rnd(i, 5) * 360), size: 4 + rnd(i, 6) * 5, spin: 2 + rnd(i, 7) * 4,
+}));
+function drawConfetti(t) {
+  for (const c of CONFETTI) {
+    const y = (c.y + t * c.speed) % (H + 40) - 20;
+    const x = c.x + Math.sin(t * 1.5 + c.y) * c.drift;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(t * c.spin);
+    ctx.scale(1, Math.cos(t * c.spin * 1.3));
+    ctx.fillStyle = `hsl(${c.hue}, 90%, 62%)`;
+    ctx.fillRect(-c.size / 2, -c.size / 4, c.size, c.size / 2);
+    ctx.restore();
+  }
+}
+
+// ------------------------------------------------------------------- HUD
+function health(f, b) {
+  let hp = 100;
+  for (const h of f.hits) hp -= (h.dmg || 8 * h.power) * smooth((b - h.b) / 0.5);
+  return Math.max(0, hp);
+}
+
+function drawHud(b) {
+  const layout = [["islam", 30], ["hasbulla", 340], ["khamzat", 650]];
+  for (const [key, x] of layout) {
+    const f = byKey[key];
+    const hp = health(f, b);
+    // Avatar: the photo if there is one, otherwise a coloured disc.
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x + 16, 28, 16, 0, Math.PI * 2);
+    ctx.clip();
+    if (f.face) ctx.drawImage(f.face, x, 12, 32, 32);
+    else { ctx.fillStyle = f.skin; ctx.fillRect(x, 12, 32, 32); }
+    ctx.restore();
+    ctx.strokeStyle = f.glow;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(x + 16, 28, 16, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = "#f0f0f0";
+    ctx.font = "800 14px 'Segoe UI', Arial, sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(f.name, x + 42, 24);
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.beginPath();
+    ctx.roundRect(x + 42, 30, 238, 13, 6);
+    ctx.fill();
+    ctx.fillStyle = hp > 50 ? "#3fb950" : hp > 25 ? "#ffd23f" : "#f85149";
+    ctx.beginPath();
+    ctx.roundRect(x + 42, 30, Math.max(0, 238 * hp / 100), 13, 6);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.4)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(x + 42, 30, 238, 13, 6);
+    ctx.stroke();
+  }
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  ctx.font = "700 13px 'Segoe UI', Arial, sans-serif";
+  ctx.textAlign = "center";
+  const sec = Math.floor(b * BEAT);
+  ctx.fillText(`ROUND 1  •  0:${String(sec).padStart(2, "0")}`, W / 2, 68);
+}
+
+function bigText(text, b, from, to, fill, size, y) {
+  if (b < from || b > to) return;
+  const pop = easeOutBack(clamp((b - from) / 0.5));
+  const fade = clamp((to - b) / 0.5);
+  ctx.save();
+  ctx.globalAlpha = fade;
+  ctx.translate(W / 2, y);
+  ctx.scale(pop, pop);
+  ctx.rotate(-0.04);
+  ctx.font = `900 italic ${size}px 'Segoe UI', Arial, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = size * 0.12;
+  ctx.strokeStyle = "#2b0606";
+  ctx.strokeText(text, 0, 0);
+  ctx.fillStyle = fill;
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
+}
+
+// ------------------------------------------------------------------ render
+function render(t) {
+  const b = (t / BEAT) % TOTAL;
+  const tt = b * BEAT;
+  const sh = shakeAt(b);
+
+  ctx.clearRect(0, 0, W, H);
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#06050d");
+  bg.addColorStop(1, "#171030");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.translate(sh.x, sh.y);
+  drawCrowd(b, tt);
+  drawCage();
+  drawMat(b);
+  drawLights(b);
+
+  const states = {};
+  for (const key of DRAW_ORDER) {
+    const f = byKey[key];
+    states[key] = fighterAt(f, b);
+    drawFighter(f, states[key]);
+  }
+  for (const f of FIGHTERS) {
+    drawStunned(f, states[f.key], b);
+    if (f.states.some((s) => s.name === "tired") && b >= 9.6 && b < 14.4 && f.key !== "hasbulla") drawSweat(f, b);
+  }
+  drawBubble(byKey.khamzat, "!", b, 13.2, 14.4);
+  for (const h of HITS) drawBurst(h, b);
+  if (b > 19) drawConfetti(tt);
+  ctx.restore();
+
+  // Screen flash on the double knockout.
+  const kd = b - 15.2;
+  if (kd >= 0 && kd < 0.5) {
+    ctx.fillStyle = `rgba(255,255,255,${0.35 * (1 - kd / 0.5)})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  drawHud(b);
+  bigText("FIGHT!", b, 0.9, 2.8, "#ffd23f", 120, 270);
+  bigText("DOUBLE K.O.!", b, 16.1, 19.0, "#ff4a3a", 96, 250);
+  bigText("HASBULLA WINS!", b, 19.0, 36, "#ffd23f", 84, 215);
+}
+
+// ------------------------------------------------------------------ clock
+const reducedMotion =
+  window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+let paused = reducedMotion;
+let elapsed = 0;                 // fight time accumulated before the last resume
+let resumedAt = performance.now();
+
+function clock() {
+  return elapsed + (paused ? 0 : (performance.now() - resumedAt) / 1000);
+}
+
+function setPaused(p) {
+  if (p === paused) return;
+  if (p) elapsed = clock();
+  else resumedAt = performance.now();
+  paused = p;
+  playBtn.textContent = paused ? "Play" : "Pause";
+  if (!paused) resyncAudio();
+  if (paused) render(clock());
+}
+
+function frame() {
+  if (!paused) render(clock());
+  requestAnimationFrame(frame);
+}
+
+// ------------------------------------------------------------------ sound
+// A small synthesized beat plus sound effects. Everything is scheduled
+// against the fight clock, so the sound stays locked to the action.
+const STEP = BEAT / 4;           // sixteenth note
+const BASS = [55, 0, 55, 82.4, 0, 55, 73.4, 0, 65.4, 0, 65.4, 98, 0, 65.4, 87.3, 0];
+const LEAD = [440, 0, 523, 0, 659, 0, 523, 0, 440, 0, 587, 0, 659, 0, 784, 0];
+let actx = null, noiseBuf = null, soundOn = false, nextStep = 0, nextSfx = 0;
+
+const sfxTime = (i) => Math.floor(i / SFX.length) * LOOP + SFX[i % SFX.length].b * BEAT;
+
+function resyncAudio() {
+  const now = clock();
+  nextStep = Math.ceil(now / STEP);
+  nextSfx = 0;
+  while (sfxTime(nextSfx) < now) nextSfx++;
+}
+
+function tone(type, freq, when, dur, gain, filterHz) {
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type;
+  o.frequency.value = freq;
+  let node = o;
+  if (filterHz) {
+    const f = actx.createBiquadFilter();
+    f.type = "lowpass";
+    f.frequency.value = filterHz;
+    o.connect(f);
+    node = f;
+  }
+  node.connect(g);
+  g.connect(actx.destination);
+  g.gain.setValueAtTime(gain, when);
+  g.gain.exponentialRampToValueAtTime(0.001, when + dur);
+  o.start(when);
+  o.stop(when + dur + 0.02);
+}
+
+function noise(when, dur, gain, filterType, hz, hzEnd) {
+  const s = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
+  s.buffer = noiseBuf;
+  f.type = filterType;
+  f.frequency.setValueAtTime(hz, when);
+  if (hzEnd) f.frequency.exponentialRampToValueAtTime(hzEnd, when + dur);
+  s.connect(f); f.connect(g); g.connect(actx.destination);
+  g.gain.setValueAtTime(gain, when);
+  g.gain.exponentialRampToValueAtTime(0.001, when + dur);
+  s.start(when);
+  s.stop(when + dur + 0.02);
+}
+
+function thump(when, f0, f1, dur, gain) {
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.frequency.setValueAtTime(f0, when);
+  o.frequency.exponentialRampToValueAtTime(f1, when + dur * 0.5);
+  o.connect(g); g.connect(actx.destination);
+  g.gain.setValueAtTime(gain, when);
+  g.gain.exponentialRampToValueAtTime(0.001, when + dur);
+  o.start(when); o.stop(when + dur + 0.03);
+}
+
+function playSfx(kind, when) {
+  if (kind === "bell") {
+    for (const [f, g] of [[880, 0.22], [1320, 0.12], [1760, 0.07]]) tone("sine", f, when, 0.9, g);
+  } else if (kind === "hit") {
+    thump(when, 140, 50, 0.12, 0.7);
+    noise(when, 0.1, 0.5, "bandpass", 900);
+  } else if (kind === "heavy") {
+    thump(when, 100, 35, 0.3, 1.0);
+    noise(when, 0.18, 0.7, "bandpass", 600);
+    noise(when, 0.05, 0.4, "highpass", 3000);
+  } else if (kind === "whoosh") {
+    noise(when, 0.35, 0.3, "bandpass", 400, 3000);
+  } else if (kind === "roar") {
+    const s = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
+    s.buffer = noiseBuf;
+    f.type = "lowpass";
+    f.frequency.value = 1400;
+    s.connect(f); f.connect(g); g.connect(actx.destination);
+    g.gain.setValueAtTime(0.001, when);
+    g.gain.linearRampToValueAtTime(0.5, when + 0.4);
+    g.gain.exponentialRampToValueAtTime(0.001, when + 2.0);
+    s.start(when);
+    s.stop(when + 2.05);
+  }
+}
+
+function playStep(n, when) {
+  const s = n % 16;
+  if (s % 4 === 0) thump(when, 150, 45, 0.22, 0.8);
+  if (s === 4 || s === 12) noise(when, 0.15, 0.3, "bandpass", 1600);
+  if (s % 4 === 2) noise(when, 0.05, 0.12, "highpass", 7000);
+  if (BASS[s]) tone("sawtooth", BASS[s], when, 0.2, 0.2, 420);
+  if (LEAD[s]) tone("triangle", LEAD[s], when, 0.16, 0.06);
+}
+
+setInterval(() => {
+  if (!soundOn || paused) return;
+  const now = clock();
+  while (nextStep * STEP < now + 0.15) {
+    playStep(nextStep, actx.currentTime + Math.max(0, nextStep * STEP - now));
+    nextStep++;
+  }
+  while (sfxTime(nextSfx) < now + 0.15) {
+    playSfx(SFX[nextSfx % SFX.length].k, actx.currentTime + Math.max(0, sfxTime(nextSfx) - now));
+    nextSfx++;
+  }
+}, 30);
+
+// --------------------------------------------------------------- controls
+const playBtn = document.getElementById("playBtn");
+const soundBtn = document.getElementById("soundBtn");
+playBtn.textContent = paused ? "Play" : "Pause";
+
+playBtn.addEventListener("click", () => setPaused(!paused));
+soundBtn.addEventListener("click", () => {
+  soundOn = !soundOn;
+  if (soundOn) {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (!noiseBuf) {
+      noiseBuf = actx.createBuffer(1, actx.sampleRate, actx.sampleRate);
+      const data = noiseBuf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    }
+    actx.resume();
+    resyncAudio();
+  }
+  soundBtn.textContent = soundOn ? "Sound: on" : "Sound: off";
+  soundBtn.classList.toggle("on", soundOn);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.code === "Space") {
+    e.preventDefault();
+    setPaused(!paused);
+  }
+});
+
+// ------------------------------------------------------------ face photos
+// A picked photo is cropped to a square, shrunk, and remembered in
+// localStorage so it survives a reload. Nothing is uploaded anywhere.
+const FACE_PX = 256;
+const DEFAULT_FACES = {};
+const facePicker = document.getElementById("facePicker");
+let pickFor = null;
+
+function storeKey(d) { return "danceFace:" + d.key; }   // shared with dance.html
+
+function setFace(d, source) {
+  const side = Math.min(source.width, source.height);
+  const sy = (source.height - side) * 0.3;     // portraits: favor the upper part
+  const c = document.createElement("canvas");
+  c.width = c.height = FACE_PX;
+  c.getContext("2d").drawImage(source, (source.width - side) / 2, sy, side, side, 0, 0, FACE_PX, FACE_PX);
+  d.face = c;
+  try { localStorage.setItem(storeKey(d), c.toDataURL("image/jpeg", 0.85)); } catch (e) { /* storage unavailable */ }
+  if (paused) render(clock());
+}
+
+function clearFace(d) {
+  d.face = null;
+  try { localStorage.removeItem(storeKey(d)); } catch (e) { /* storage unavailable */ }
+  if (paused) render(clock());
+}
+
+document.querySelectorAll("[data-face]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    pickFor = byKey[btn.dataset.face];
+    facePicker.click();
+  });
+});
+document.getElementById("clearFaces").addEventListener("click", () => FIGHTERS.forEach(clearFace));
+facePicker.addEventListener("change", async () => {
+  const file = facePicker.files[0];
+  facePicker.value = "";
+  if (!file || !pickFor) return;
+  try {
+    setFace(pickFor, await createImageBitmap(file));
+  } catch (e) {
+    console.warn("Could not read that image:", e);
+  }
+});
+
+for (const d of FIGHTERS) {
+  let url = null;
+  try { url = localStorage.getItem(storeKey(d)); } catch (e) { /* storage unavailable */ }
+  if (!url) url = DEFAULT_FACES[d.key];
+  if (!url) continue;
+  const img = new Image();
+  img.onload = () => { d.face = img; if (paused) render(clock()); };
+  img.src = url;
+}
+
+render(clock());
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
