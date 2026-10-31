@@ -273,6 +273,8 @@ h2 { font-size: clamp(36px, 10vw, 48px); line-height: 1; }
   cursor: pointer;
 }
 .btn.alt { color: var(--ink); background: var(--paper); }
+a.btn { display: inline-block; text-decoration: none; }
+.btn.more { background: var(--lav); }
 
 .sheet .panel { max-height: 100%; min-height: 0; gap: 8px; padding: 18px 18px 16px; width: min(100%, 460px); }
 .sheet-head { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -334,6 +336,7 @@ h2 { font-size: clamp(36px, 10vw, 48px); line-height: 1; }
         <button class="btn" id="readBtn" type="button">Read them all</button>
         <button class="btn alt" id="againBtn" type="button">Catch again</button>
       </div>
+      <a class="btn more" id="moreLink" href="sorry-lara/">One more thing</a>
     </div>
   </div>
 
