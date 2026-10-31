@@ -49,11 +49,24 @@ enemies or inside jokes.
 ## Send it to her
 
 ```bash
-node build.js        # -> dist/sorry-lara.html
+node build.js        # -> dist/sorry-lara.html  and  ../docs/index.html
 ```
 
-`dist/sorry-lara.html` is the whole game in one file. Send it, put it on any
-web host, or enable GitHub Pages. It works fully offline.
+`dist/sorry-lara.html` is the whole game in one file. Send it as an attachment
+and she can double-click it. It works fully offline.
+
+## Put it online (GitHub Pages)
+
+`../docs/index.html` is the same file, laid out for hosting. To get a link:
+
+1. On GitHub open the repo, **Settings > Pages**.
+2. Under *Build and deployment* choose **Deploy from a branch**, pick the branch
+   that has this folder (or `main` once it is merged), set the folder to
+   **/docs** and save.
+3. After about a minute the game is live at
+   `https://<your-username>.github.io/<repo-name>/`. Send her that link.
+
+Add `?from=YourName` to the link to put your name on the letter.
 
 ## Files
 

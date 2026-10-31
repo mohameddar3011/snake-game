@@ -22,6 +22,8 @@ const CONFIG = {
   question: 'Will you forgive me?',
   yes: 'Yes, I forgive you',
   no: 'No',
+  // Big line on the final screen once she says yes. Make it yours.
+  signoff: 'Sorry, my love. I love you. Always yours.',
   // What she says when she says yes.
   forgiven: "Okay... I forgive you. But you're still doing the dishes.",
   // Shown under the title.

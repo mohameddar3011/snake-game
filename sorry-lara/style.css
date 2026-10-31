@@ -156,3 +156,5 @@ body.touch #tSwap { right: 5%; bottom: 40%; }
 #win { align-items: flex-start; text-align: left; padding-left: 6em; background: linear-gradient(90deg, rgba(10, 2, 8, .88) 20%, rgba(10, 2, 8, .1) 75%); }
 #win .quote { max-width: 30em; }
 #between { background: radial-gradient(ellipse at center, rgba(20, 8, 14, .94), rgba(3, 2, 4, .98)); }
+
+.signoff { font-size: 2.1em; font-style: italic; text-transform: none; letter-spacing: .03em; color: #ffd0de; text-shadow: 0 0 .7em rgba(255, 77, 121, .75); line-height: 1.15; max-width: 14em; }

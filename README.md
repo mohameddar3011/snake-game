@@ -34,4 +34,4 @@ Toggling AI mode hands control of the snake to a simple pathfinding bot instead 
 
 ## Also in this repo
 
-[`sorry-lara/`](sorry-lara/) is a Call-of-Duty-style first-person shooter built on the same no-dependencies idea. See its README.
+[`sorry-lara/`](sorry-lara/) (also hosted from [`docs/`](docs/)) is a Call-of-Duty-style first-person shooter built on the same no-dependencies idea. See its README.

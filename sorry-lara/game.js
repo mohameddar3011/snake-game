@@ -538,7 +538,7 @@ function dodgeNo() {
 }
 function winGame() {
   S.mode = 'win'; S.forgive = 100; Sound.play('win'); LV.laraSoft = true;
-  $('winFace').src = portraitURL('smile'); $('winText').textContent = '"' + CONFIG.forgiven + '"';
+  $('signoff').textContent = CONFIG.signoff; $('winFace').src = portraitURL('smile'); $('winText').textContent = '"' + CONFIG.forgiven + '"';
   const t = Math.floor(S.runTime), st = $('winStats'); st.innerHTML = '';
   const acc = S.stats.shots ? Math.round((S.stats.hits / S.stats.shots) * 100) + '%' : '-';
   [['BAD HABITS ELIMINATED', S.stats.kills], ['HEADSHOTS', S.stats.heads], ['ACCURACY', acc], ['TIME TO SAY SORRY', ((t / 60) | 0) + ':' + String(t % 60).padStart(2, '0')], ['TIMES ' + CONFIG.her.toUpperCase() + ' WAS RIGHT', 'ALWAYS'], ['DEATHS', S.stats.deaths], ['SCORE', S.score]].forEach(([a, b]) => { const x = document.createElement('span'), y = document.createElement('span'); x.textContent = a; y.textContent = b; st.append(x, y); });
@@ -549,6 +549,11 @@ function winGame() {
 function updatePlayer(dt) {
   if (keys.ArrowLeft) P.ang -= 2.4 * dt; if (keys.ArrowRight) P.ang += 2.4 * dt;
   if (keys.ArrowUp) P.pitch = clamp(P.pitch + 190 * dt, -110, 110); if (keys.ArrowDown) P.pitch = clamp(P.pitch - 190 * dt, -110, 110);
+  if (S.noLock && !S.hasLock && !S.touch) { // mouse can't be captured (e.g. embedded page): steer by where the pointer sits
+    const dz = v => (Math.abs(v) < 0.15 ? 0 : (v - Math.sign(v) * 0.15) / 0.85);
+    P.ang += dz(S.mx || 0) * 2.6 * dt;
+    if (!keys.ArrowUp && !keys.ArrowDown) P.pitch += (-dz(S.my || 0) * 90 - P.pitch) * Math.min(1, dt * 6);
+  }
   let fwd = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - touchMove.y, str = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + touchMove.x;
   const len = Math.hypot(fwd, str); if (len > 1) { fwd /= len; str /= len; }
   P.sprint = (keys.ShiftLeft || keys.ShiftRight || (S.touch && len > 0.95)) && fwd > 0.3;
@@ -759,6 +764,7 @@ function look(dx, dy) {
   P.sway = clamp(P.sway - dx * 0.6, -60, 60);
 }
 document.addEventListener('mousemove', e => {
+  const r = stage.getBoundingClientRect(); S.mx = ((e.clientX - r.left) / r.width) * 2 - 1; S.my = ((e.clientY - r.top) / r.height) * 2 - 1;
   if (S.mode !== 'play') return;
   if (S.hasLock || (S.noLock && (e.buttons & 2))) look(e.movementX, e.movementY);
 });
@@ -775,7 +781,7 @@ function pauseGame() {
   if (S.mode !== 'play') return;
   S.mode = 'paused'; P.firing = false; show('pause'); $('hud').classList.remove('hidden');
   try { document.exitPointerLock(); } catch (e) { /* ignore */ }
-  $('noLockNote').textContent = S.noLock ? 'Mouse capture is unavailable here: hold the RIGHT mouse button and drag to look around.' : '';
+  $('noLockNote').textContent = S.noLock ? 'Mouse capture is unavailable here: move the pointer toward the left / right edge to turn, up / down to look (or use the arrow keys).' : '';
 }
 function resumeGame() {
   if (S.mode !== 'paused') return;
