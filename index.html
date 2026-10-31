@@ -1,22 +1,122 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Snake</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Operation I'm Sorry</title>
+<meta name="description" content="A Call-of-Duty-style shooter with one objective: earn forgiveness.">
+<meta name="theme-color" content="#0b0507">
+<meta property="og:title" content="Operation I'm Sorry">
+<meta property="og:description" content="A Call-of-Duty-style shooter with one objective: earn forgiveness.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23ff4d79' d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="wrap">
-    <h1>Snake</h1>
-    <div class="hud">
-      <div>Score: <span id="score">0</span></div>
-      <div>High Score: <span id="highScore">0</span></div>
-      <div>Level: <span id="level">1</span></div>
+<div id="stage">
+  <canvas id="view"></canvas>
+  <canvas id="fx"></canvas>
+
+  <div id="hud" class="hidden">
+    <div id="topleft">
+      <canvas id="minimap" width="150" height="150"></canvas>
+      <div id="callsign"></div>
     </div>
-    <canvas id="board" width="400" height="400"></canvas>
-    <button id="aiToggle">AI Autopilot: OFF</button>
-    <p id="message">Press an arrow key or WASD to start. Press P to pause, I for AI autopilot.</p>
+    <div id="objective">
+      <div id="objTitle"></div>
+      <div id="objText"></div>
+      <div id="forgive">
+        <svg class="heart" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+        <div class="bar"><i id="forgiveFill"></i></div>
+        <span id="forgiveTxt">0%</span>
+      </div>
+      <div class="fl">FORGIVENESS</div>
+    </div>
+    <div id="topright"><div id="score">0</div><div id="killfeed"></div></div>
+    <div id="bossbar" class="hidden"><div class="name">PRIDE</div><div class="bar"><i id="bossFill"></i></div></div>
+    <div id="radio" class="hidden"><img id="radioFace" alt=""><div class="rt"><b id="radioName"></b><em>RADIO</em><p id="radioText"></p></div></div>
+    <div id="crosshair"><i></i><i></i><i></i><i></i></div>
+    <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
+    <div id="target"></div>
+    <div id="popups"></div>
+    <div id="banner"></div>
+    <div id="intro"></div>
+    <div id="vitals"><div class="hpbar"><i id="hpFill"></i></div><div id="hpNum">100</div><div id="streakTxt"></div></div>
+    <div id="ammo"><div id="wpnName"></div><div class="nums"><b id="ammoMag">30</b><span id="ammoRes">/ 120</span></div><div id="wpnHint"></div></div>
   </div>
-  <script src="script.js"></script>
+
+  <div id="touch" class="hidden">
+    <div id="joy"><i id="knob"></i></div>
+    <button class="tbtn" id="tFire">FIRE</button>
+    <button class="tbtn" id="tReload">RLD</button>
+    <button class="tbtn" id="tSwap">SWAP</button>
+    <button class="tbtn" id="tPause">II</button>
+  </div>
+
+  <section id="title" class="screen">
+    <div class="brand">TASK FORCE <b id="brandName">SORRY</b></div>
+    <h1>OPERATION<span>I'M SORRY</span></h1>
+    <p class="tag" id="tagline"></p>
+    <div class="brief"><h3>MISSION BRIEFING</h3><p id="briefText"></p></div>
+    <div class="diffs" id="diffs"></div>
+    <button id="deploy" class="btn big">DEPLOY</button>
+    <p class="controls">WASD move &nbsp;|&nbsp; MOUSE aim &nbsp;|&nbsp; CLICK fire &nbsp;|&nbsp; SHIFT sprint &nbsp;|&nbsp; R reload &nbsp;|&nbsp; 1 / 2 weapon &nbsp;|&nbsp; M mute &nbsp;|&nbsp; ESC pause</p>
+  </section>
+
+  <section id="pause" class="screen hidden">
+    <h2>PAUSED</h2>
+    <p class="sub" id="pauseNote">Lara is waiting. No rush. (There is a rush.)</p>
+    <button id="resume" class="btn big">RESUME</button>
+    <p class="controls">WASD move &nbsp;|&nbsp; MOUSE aim &nbsp;|&nbsp; CLICK fire &nbsp;|&nbsp; SHIFT sprint &nbsp;|&nbsp; R reload &nbsp;|&nbsp; 1 / 2 weapon &nbsp;|&nbsp; Arrow keys also turn</p>
+    <p class="controls" id="noLockNote"></p>
+  </section>
+
+  <section id="dead" class="screen hidden">
+    <h2 class="red">MISSION FAILED</h2>
+    <div class="quote"><img id="deadFace" alt=""><p id="deadText"></p></div>
+    <button id="retry" class="btn big">TRY AGAIN</button>
+  </section>
+
+  <section id="between" class="screen hidden">
+    <h2 id="betTitle">MISSION COMPLETE</h2>
+    <div class="quote"><img id="betFace" alt=""><p id="betText"></p></div>
+    <div class="stats" id="betStats"></div>
+    <button id="next" class="btn big">CONTINUE</button>
+  </section>
+
+  <section id="final" class="screen hidden">
+    <div class="dlg" id="dlg">
+      <div class="who" id="finalWho"></div>
+      <p id="finalText"></p>
+      <button id="finalNext" class="btn">CONTINUE</button>
+      <div id="ask" class="hidden">
+        <h2 id="askQ"></h2>
+        <div class="yesno"><button id="yesBtn" class="btn yes"></button><button id="noBtn" class="btn no"></button></div>
+        <p id="noMsg"></p>
+      </div>
+    </div>
+  </section>
+
+  <section id="win" class="screen hidden">
+    <h2 class="pink">MISSION COMPLETE</h2>
+    <div class="big-forgive"><svg class="heart" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg><span>FORGIVENESS 100%</span></div>
+    <p class="signoff" id="signoff"></p>
+    <div class="quote"><img id="winFace" alt=""><p id="winText"></p></div>
+    <div class="stats" id="winStats"></div>
+    <button id="again" class="btn">PLAY AGAIN</button>
+  </section>
+
+  <canvas id="confetti"></canvas>
+  <div id="fade"></div>
+  <div id="rotate">Please rotate your phone to landscape</div>
+</div>
+
+<script src="config.js"></script>
+<script src="audio.js"></script>
+<script src="art.js"></script>
+<script src="viewmodel.js"></script>
+<script src="maps.js"></script>
+<script src="levels.js"></script>
+<script src="engine.js"></script>
+<script src="game.js"></script>
 </body>
 </html>
