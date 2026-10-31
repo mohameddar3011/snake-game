@@ -31,3 +31,7 @@ Toggling AI mode hands control of the snake to a simple pathfinding bot instead 
 - Each tick it runs a **breadth-first search (BFS)** from the snake's head to the food, treating the snake's own body as obstacles, and takes the first step of the shortest path found.
 - If no path to the food exists (the snake has boxed itself in), it falls back to a **flood-fill safety check**: it looks at each direction it could legally move and picks whichever one opens up the most free space, to delay getting trapped for as long as possible.
 - Moving manually with the keyboard immediately hands control back to you.
+
+## Also in this repo
+
+[`sorry-lara/`](sorry-lara/) (also hosted from [`docs/`](docs/)) is a Call-of-Duty-style first-person shooter built on the same no-dependencies idea. See its README.
