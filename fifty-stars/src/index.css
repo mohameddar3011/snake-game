@@ -1,0 +1,271 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --gold: #ffd36b;
+  --rose: #ff8cc6;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+html {
+  background: #04010d;
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  margin: 0;
+  overflow: hidden;
+  background: #04010d;
+  color: #fff;
+  font-family: 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+button {
+  font: inherit;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+::selection {
+  background: rgba(255, 140, 198, 0.45);
+}
+
+@layer components {
+  /* ---------- glassmorphism ---------- */
+  .glass {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.04));
+    -webkit-backdrop-filter: blur(18px) saturate(1.5);
+    backdrop-filter: blur(18px) saturate(1.5);
+    border: 1px solid rgba(255, 255, 255, 0.17);
+    box-shadow: 0 10px 40px rgba(8, 2, 30, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  }
+  .glass-deep {
+    background: linear-gradient(160deg, rgba(74, 30, 132, 0.62), rgba(20, 8, 54, 0.78));
+    -webkit-backdrop-filter: blur(22px) saturate(1.6);
+    backdrop-filter: blur(22px) saturate(1.6);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    box-shadow: 0 24px 80px rgba(6, 1, 24, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.26);
+  }
+
+  /* gradient hairline border (works with rounded corners) */
+  .edge::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, rgba(255, 233, 168, 0.95), rgba(255, 140, 198, 0.55) 45%, rgba(190, 140, 255, 0.7));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* ---------- gradient text ---------- */
+  .t-gold {
+    background: linear-gradient(180deg, #fffaf0 0%, #ffe9a8 38%, #ffc94d 78%, #f4ac26 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+  }
+  .t-rose {
+    background: linear-gradient(180deg, #ffffff 0%, #ffe0f0 40%, #ff9fd0 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+  }
+  .t-moon {
+    background: linear-gradient(180deg, #ffffff 0%, #f1e8ff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+  }
+  .t-shimmer {
+    background-size: 240% 100%;
+    animation: shimmer 6s linear infinite;
+  }
+  .emoji {
+    -webkit-text-fill-color: initial;
+    background: none;
+    font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
+    filter: drop-shadow(0 0 14px rgba(255, 90, 170, 0.7));
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ---------- the 50 clickable stars ---------- */
+.star {
+  --c: #f1e9ff;
+  --glow: rgba(206, 178, 255, 0.42);
+  --s: 1;
+  --dur: 3.6s;
+  --delay: 0s;
+}
+.star[data-tint='rose'] {
+  --c: #ffd0ea;
+  --glow: rgba(255, 140, 200, 0.42);
+}
+.star[data-tint='lilac'] {
+  --c: #e4d2ff;
+  --glow: rgba(176, 140, 255, 0.42);
+}
+.star[data-found='true'] {
+  --c: #ffd36b;
+  --glow: rgba(255, 201, 77, 0.62);
+}
+.star-glow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--s) * 44px);
+  height: calc(var(--s) * 44px);
+  margin: calc(var(--s) * -22px) 0 0 calc(var(--s) * -22px);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--glow) 0%, transparent 68%);
+  animation: glowPulse var(--dur) ease-in-out var(--delay) infinite;
+  transition: background 1.2s ease;
+}
+.star-core {
+  position: relative;
+  width: calc(var(--s) * 19px);
+  height: calc(var(--s) * 19px);
+  color: var(--c);
+  filter: drop-shadow(0 0 5px var(--c)) drop-shadow(0 0 13px var(--glow));
+  transition: color 1s ease;
+  animation: twinkle var(--dur) ease-in-out var(--delay) infinite;
+}
+.star[data-found='true'] .star-core {
+  animation: foundPulse 4.2s ease-in-out var(--delay) infinite;
+}
+.star[data-found='true'] .star-glow {
+  animation: foundGlow 4.2s ease-in-out var(--delay) infinite;
+}
+.star[data-flare='true'] .star-core {
+  animation: flare 2.6s cubic-bezier(0.2, 0.7, 0.2, 1) both, foundPulse 4.2s ease-in-out 2.6s infinite;
+}
+.star[data-flare='true'] .star-glow {
+  animation: flareGlow 2.6s ease-out both, foundGlow 4.2s ease-in-out 2.6s infinite;
+}
+
+@keyframes twinkle {
+  0%, 100% { opacity: 0.55; transform: scale(0.82) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1.12) rotate(10deg); }
+}
+@keyframes glowPulse {
+  0%, 100% { opacity: 0.45; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+@keyframes foundPulse {
+  0%, 100% { opacity: 0.92; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.1) rotate(6deg); }
+}
+@keyframes foundGlow {
+  0%, 100% { opacity: 0.8; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.18); }
+}
+@keyframes flare {
+  0% { transform: scale(1); filter: brightness(1) drop-shadow(0 0 5px var(--c)); }
+  22% { transform: scale(2.9) rotate(45deg); filter: brightness(2.4) drop-shadow(0 0 22px #fff) drop-shadow(0 0 40px var(--c)); }
+  60% { transform: scale(1.5) rotate(90deg); filter: brightness(1.5) drop-shadow(0 0 14px var(--c)); }
+  100% { transform: scale(1) rotate(90deg); filter: brightness(1.1) drop-shadow(0 0 7px var(--c)); }
+}
+@keyframes flareGlow {
+  0% { opacity: 0.8; transform: scale(1); }
+  22% { opacity: 1; transform: scale(3.4); }
+  100% { opacity: 0.85; transform: scale(1.2); }
+}
+@keyframes shimmer {
+  0% { background-position: 120% 0; }
+  100% { background-position: -120% 0; }
+}
+@keyframes heartbeat {
+  0%, 100% { transform: scale(1); }
+  12% { transform: scale(1.1); }
+  24% { transform: scale(1.01); }
+  38% { transform: scale(1.07); }
+  60% { transform: scale(1); }
+}
+@keyframes floaty {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+/* ---------- nebula clouds ---------- */
+.nebula {
+  position: absolute;
+  border-radius: 50%;
+  will-change: transform;
+}
+.nebula-a {
+  width: 95vmax; height: 95vmax; left: -38vmax; top: -30vmax;
+  background: radial-gradient(closest-side, rgba(150, 70, 230, 0.32), transparent 72%);
+  animation: driftA 70s ease-in-out infinite alternate;
+}
+.nebula-b {
+  width: 85vmax; height: 85vmax; right: -34vmax; top: 14vh;
+  background: radial-gradient(closest-side, rgba(255, 90, 175, 0.2), transparent 72%);
+  animation: driftB 86s ease-in-out infinite alternate;
+}
+.nebula-c {
+  width: 90vmax; height: 90vmax; left: 6vw; bottom: -46vmax;
+  background: radial-gradient(closest-side, rgba(70, 80, 220, 0.3), transparent 72%);
+  animation: driftA 96s ease-in-out infinite alternate-reverse;
+}
+@keyframes driftA {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(6vmax, 4vmax, 0) scale(1.12); }
+}
+@keyframes driftB {
+  from { transform: translate3d(0, 0, 0) scale(1.05); }
+  to { transform: translate3d(-7vmax, 3vmax, 0) scale(0.94); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nebula { animation: none; }
+}
+
+/* ---------- message page glow ---------- */
+.glow-blob {
+  position: absolute;
+  border-radius: 50%;
+  will-change: transform, opacity;
+}
+
+/* ---------- the unlocked moon: pulse + "tap me" ripples (compositor-only animations) ---------- */
+@keyframes moonPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.028); }
+}
+@keyframes moonRing {
+  0% { transform: scale(1); opacity: 0.9; }
+  100% { transform: scale(1.22); opacity: 0; }
+}
+.moon-pulse {
+  animation: moonPulse 4.6s ease-in-out infinite;
+}
+.moon-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  will-change: transform, opacity;
+  background: radial-gradient(closest-side, transparent 93%, rgba(255, 228, 176, 0.95) 97%, rgba(255, 150, 210, 0.45) 99%, transparent 100%);
+  animation: moonRing 2.6s ease-out infinite;
+}

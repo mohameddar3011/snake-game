@@ -78,3 +78,12 @@ Add `?from=YourName` to the link to put your name on the letter.
 | `audio.js` | synthesised sound effects and music (Web Audio) |
 | `game.js` | enemies, boss, weapons, HUD, story flow, input |
 | `levels.js` / `maps.js` | missions, dialogue, and the ASCII maps |
+
+---
+
+## Also in this repo: 50 Stars Before the Moon 🌙
+
+A second, separate project lives in [`fifty-stars/`](fifty-stars/): a romantic, interactive night-sky experience
+(React + Tailwind + Framer Motion). Find 50 stars, unlock the moon, read the message.
+It builds to one self-contained file at `docs/fifty-stars/index.html` (served at `.../fifty-stars/` on GitHub Pages) and
+`dist/fifty-stars-before-the-moon.html` (to send as an attachment). See [`fifty-stars/README.md`](fifty-stars/README.md).
